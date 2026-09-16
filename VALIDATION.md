@@ -1,6 +1,28 @@
-# Validation — 2026-09-16
+# Validation — v0.2.0 / 2026-09-16
 
-## 結果
+## Windows対応
+
+Windowsネイティブ実行向けに、Wiresharkの自動検出、Npcapのcapture IDと日本語NIC名の対応付け、非表示の専用consoleを利用した正常停止を追加した。
+
+| 検証 | 結果 |
+|---|---|
+| Windows / Python 3.12.14 単体・プロセス試験 | **28 passed** |
+| Linux / Python 3.10.12 回帰単体試験 | **26 passed, 2 skipped**（Windows専用試験） |
+| Windows実NICのGUID・名称・MAC・IPv4・状態取得 | PASS（読み取りのみ） |
+| Windowsで2つの子プロセスの片方だけ正常停止 | PASS |
+| Windowsの容量低下による子プロセス停止・metadata確定 | PASS（合成コンテナのfixture） |
+| 日本語の保存パス、依存ツール不足のエラー表示 | PASS |
+| Windowsでwheel作成、停止helperの同梱確認 | PASS |
+| WindowsのNpcapによる実capture | **未実施**：利用者の指定によりWireshark／Npcapの導入は後日 |
+
+Windowsの停止試験は実際のWindowsプロセスとconsole制御を使ったもの。capture backendのfixtureはパケット取得の実証には含めない。Windowsの実capture・rotation・E1R併用は、Wireshark／Npcap導入後の検証項目とする。
+
+Linuxでは既存の実capture試験を再実行し、PCAPNG、PCAP、時間／サイズrotation、E1R同時受信・offline復号、独立停止、容量不足停止がすべて成功。追加20,000 UDPパケットの連番も全件一致し、kernel／capture dropsは0。
+回帰試験の証跡: `validation-artifacts/20260916_235303/9baae44a/results.json`。
+
+WindowsではRecorderがCtrl+C／Ctrl+Breakを受け、専用の子consoleへCTRL_BREAKを届けてdumpcapの正常終了を待つ。Task Managerや`Stop-Process`による強制終了はこの経路を通らない。実装上の根拠: [dumpcapのWindows終了処理](https://github.com/wireshark/wireshark/blob/master/dumpcap.c)、[Windows console control](https://learn.microsoft.com/en-us/windows/console/generateconsolectrlevent)。
+
+## Linux実captureの結果
 
 ```text
 Raw Ethernet capture:
@@ -55,7 +77,7 @@ PASSの範囲は以下のWSL/veth試験です。物理NIC、E1R実機、GigE Vis
 - 出力はWSLから見たWindowsファイルシステム上。root実行は隔離試験用で、運用時のPython root実行は必須ではない。
 - テストに必要なWireshark toolsとPython仮想環境を導入。capability、sudoers、sysctl、既存NIC設定は変更していない。
 
-## 自動試験
+## 初期版（v0.1.0）の自動試験
 
 `python -m pytest -q`: **19 passed**。
 
@@ -63,7 +85,7 @@ CLI排他・形式推論・不正引数、フィルタ不使用、非循環rotat
 
 独立パッケージとしてeditable install、CLI help、interface一覧の実行も成功。
 
-## 実capture
+## 初期版（v0.1.0）の実capture
 
 最終全ケース実行の証跡: `validation-artifacts/20260916_233413/3d52ff5c/results.json`。
 実captureファイル・詳細ログ・IP/MACを含むsession metadataはローカル保存のみとし、Gitへは含めない。
@@ -102,6 +124,6 @@ live decoder終了後もRecorderが別ポート・ping等を記録し続ける�
 - SIGKILL、電源断、disk完全枯渇時の修復機能はない。容量チェックには1秒の間隔があり、余裕のある閾値が必要。
 - 終了後のコンテナ走査はbounded memoryだが、全ファイルを読み返すため大容量では時間がかかる。
 - dumpcapのstderr統計形式が変わった場合、未知の統計はnullとして扱う。3.6.2で実検証。PCAPNGのISBはファイル単位で保持し、意味が曖昧な累積値を加算しない。
-- Linux native capture専用。WSLが見られるtrafficはWSLのinterfaceへ到達したものに限られ、Windows側の全NIC通信を見られるとは限らない。
+- WindowsではNpcap、Linuxではlibpcapを使用する。WSLで実行する場合の観測範囲はWSLのinterfaceであり、Windows NICを直接記録する場合はWindows版Pythonから起動する。
 
 GitHubへの転送は接続済みGitHub APIを使用。ローカルGitのCLI認証情報は新規作成・保存しない。

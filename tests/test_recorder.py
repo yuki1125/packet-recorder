@@ -41,7 +41,8 @@ def test_invalid_configuration(values):
         Config(**values).validate()
 
 
-def test_shutdown_and_forced_shutdown():
+def test_shutdown_and_forced_shutdown(monkeypatch):
+    monkeypatch.setattr("packet_recorder.backend.sys.platform", "linux")
     process = Mock()
     process.poll.return_value = None
     assert stop_process(process) is False
@@ -93,7 +94,8 @@ def test_container_accounting_and_truncation(tmp_path):
 
 @pytest.fixture
 def fake_preflight(monkeypatch):
-    monkeypatch.setattr("packet_recorder.recorder.preflight", lambda c: ([{"name": "eth0"}], "fake", {}))
+    monkeypatch.setattr("packet_recorder.backend.sys.platform", "linux")
+    monkeypatch.setattr("packet_recorder.recorder.preflight", lambda c: ([{"name": "eth0"}], "fake", {}, c))
 
 
 def test_low_disk_does_not_start(tmp_path, monkeypatch, fake_preflight):

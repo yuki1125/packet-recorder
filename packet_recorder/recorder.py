@@ -1,5 +1,5 @@
 """Supervise a native capture process, never consume application sockets."""
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 import json
 import os
@@ -14,7 +14,8 @@ import tempfile
 import time
 
 from . import __version__
-from .interfaces import list_interfaces
+from .interfaces import list_interfaces, select_interface, interface_present
+from .backend import resolve_dumpcap, quiet_options, capture_process_options, stop_process
 from .rotation import output_path, rotation_args, capture_files
 from .stats import parse_dumpcap_statistics, scan_capture
 
@@ -56,40 +57,27 @@ def write_metadata(path, metadata):
             temporary.unlink(missing_ok=True)
 
 
-def stop_process(process, timeout=10):
-    if process.poll() is not None:
-        return False
-    try:
-        process.send_signal(signal.SIGINT)
-        process.wait(timeout=timeout)
-        return False
-    except ProcessLookupError:
-        return False
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
-        return True
-
-
 def preflight(config):
     config.validate()
-    if sys.platform != "linux":
-        raise ValueError("capture requires Linux; run inside WSL or on a Linux host")
-    selected = [i for i in list_interfaces() if i["name"] in config.interfaces]
-    if len(selected) != 1 or selected[0]["link_type"] != "ether":
-        raise ValueError("select one existing Ethernet interface (not any, loopback, or SocketCAN)")
+    if sys.platform not in ("linux", "win32"):
+        raise ValueError("capture requires Linux or Windows")
+    executable = resolve_dumpcap(config.dumpcap)
+    selected = [select_interface(list_interfaces(executable), config.interfaces[0])]
+    config = replace(config, dumpcap=executable, interfaces=[selected[0]["name"]])
     env = dict(os.environ, LC_ALL="C", LANG="C")
     version = subprocess.run([config.dumpcap, "--version"], capture_output=True,
-                             text=True, check=True, timeout=10, env=env).stdout.splitlines()[0]
+                             text=True, encoding="utf-8", errors="replace", check=True,
+                             timeout=10, env=env, **quiet_options()).stdout.splitlines()[0]
     links = subprocess.run([config.dumpcap, "-i", config.interfaces[0], "-L"],
-                           capture_output=True, text=True, check=True, timeout=10, env=env)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           check=True, timeout=10, env=env, **quiet_options())
     if "EN10MB" not in links.stdout + links.stderr:
         raise ValueError("interface does not offer Ethernet EN10MB capture")
-    return selected, version, env
+    return selected, version, env, config
 
 
 def run(config):
-    selected, version, env = preflight(config)
+    selected, version, env, config = preflight(config)
     base = output_path(config)
     base.parent.mkdir(parents=True, exist_ok=True)
     rotating = bool(config.rotate_seconds or config.rotate_size_mb)
@@ -117,12 +105,15 @@ def run(config):
             metadata["status"] = "insufficient_disk_space"
             metadata["warnings"].append("free disk space below configured minimum; capture not started")
         else:
-            for sig in (signal.SIGINT, signal.SIGTERM):
+            signals = [signal.SIGINT, signal.SIGTERM]
+            if sys.platform == "win32":
+                signals.append(signal.SIGBREAK)
+            for sig in signals:
                 handlers[sig] = signal.getsignal(sig)
                 signal.signal(sig, lambda number, frame: requested.append(number))
             with log_path.open("x", encoding="utf-8") as log:
                 process = subprocess.Popen(command(config, base), stdout=log, stderr=log,
-                                           env=env, start_new_session=True)
+                                           env=env, **capture_process_options())
                 metadata["status"] = "recording"
                 metadata["command"] = command(config, base)
                 write_metadata(metadata_path, metadata)
@@ -140,14 +131,14 @@ def run(config):
                             metadata["warnings"].append("free disk space below configured minimum")
                             print("WARNING: low disk space; stopping capture now", file=sys.stderr, flush=True)
                             break
-                        if config.interfaces[0] not in {name for _, name in socket.if_nameindex()}:
+                        if not interface_present(selected[0]):
                             metadata["status"] = "interface_disappeared"
                             metadata["warnings"].append("capture interface disappeared")
                             break
                     time.sleep(0.2)
                 if stop_process(process):
                     metadata["status"] = "forced_termination"
-                    metadata["warnings"].append("dumpcap did not close in 10 seconds; file integrity is not guaranteed")
+                    metadata["warnings"].append("graceful dumpcap shutdown failed; file integrity is not guaranteed")
                 metadata["dumpcap_exit_code"] = process.returncode
                 if metadata["status"] == "recording":
                     metadata["status"] = "completed" if process.returncode == 0 else "capture_error"
@@ -155,7 +146,7 @@ def run(config):
                     metadata["status"] = "capture_error"
         metadata["capture_duration_seconds"] = time.monotonic() - started
         metadata["end_time"] = utc_now()
-        metadata.update(parse_dumpcap_statistics(log_path.read_text(errors="replace") if log_path.exists() else ""))
+        metadata.update(parse_dumpcap_statistics(log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""))
         # Persist the stop before the potentially long, bounded-memory final accounting pass.
         write_metadata(metadata_path, metadata)
         for path in capture_files(base, rotating):

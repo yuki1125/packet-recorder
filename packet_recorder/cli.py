@@ -38,7 +38,7 @@ class Config:
 
 
 def parse_args(argv=None):
-    p = argparse.ArgumentParser(description="Record all Ethernet traffic visible on a Linux NIC; no capture filter")
+    p = argparse.ArgumentParser(description="Record all Ethernet traffic on a Linux or Windows NIC")
     p.add_argument("--interface", action="append", required=True, dest="interfaces")
     output = p.add_mutually_exclusive_group()
     output.add_argument("--output", type=Path)

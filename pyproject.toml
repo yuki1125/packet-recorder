@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "packet-recorder"
-version = "0.1.0"
-description = "Unfiltered Linux Ethernet recording supervised by Python and captured by dumpcap"
+version = "0.2.0"
+description = "Unfiltered Linux and Windows Ethernet recording with dumpcap"
 requires-python = ">=3.10"
 dependencies = []
 

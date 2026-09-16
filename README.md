@@ -1,12 +1,29 @@
 # packet-recorder
 
-LinuxのNICで観測できる全送受信パケットを、Ethernetヘッダーと取得時刻を含めてPCAPNG／PCAPに保存します。LiDAR、Ethernetカメラ、CAN-Ethernet Gatewayなどの通信記録に使えます。
+Windows／LinuxのNICで観測できる全送受信パケットを、Ethernetヘッダーと取得時刻を含めてPCAPNG／PCAPに保存します。LiDAR、Ethernetカメラ、CAN-Ethernet Gatewayなどの通信記録に使えます。
 
-対応環境はPython 3.10以上のLinux、記録対象は1つのEthernet NICです。パケットの取得・保存には、高帯域通信を低負荷で扱えるdumpcap/libpcapを使用します。
+Python 3.10以上を使用し、記録対象は1つのEthernet NICです。取得・保存はdumpcapが担当し、WindowsではNpcap、Linuxではlibpcapを利用します。
 
 ## 1. インストール
 
-Ubuntuの例です。
+### Windows（PowerShell）
+
+Python、Git、[Wireshark](https://www.wireshark.org/download.html)をインストールします。WiresharkのセットアップではNpcapも導入してください。Npcapが管理者専用に設定されている場合は、管理者としてPowerShellを開いて記録します。
+
+```powershell
+git clone https://github.com/yuki1125/packet-recorder.git
+cd packet-recorder
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m packet_recorder.interfaces
+.\.venv\Scripts\python.exe -m packet_recorder.record --interface "イーサネット" --output-dir logs
+```
+
+`イーサネット`は一覧の`NAME`に置き換えます。`INTERFACE`列の`\Device\NPF_{GUID}`でも指定できます。標準のWiresharkインストール先は自動検出します。別の場所に導入した場合は、コマンドに`--dumpcap "D:\Tools\Wireshark\dumpcap.exe"`を追加してください。
+
+以降の例の`python`は、Windowsでは`.\.venv\Scripts\python.exe`に置き換えます。
+
+### Linux（Ubuntu）
 
 ```bash
 sudo apt-get update
@@ -50,7 +67,7 @@ Linux標準コマンドでは`ip addr`でアドレス、`ip link`でリンク状
 python -m packet_recorder.record --interface enp4s0 --output-dir logs
 ```
 
-**Ctrl+Cで停止**します。ファイルを閉じた後、記録件数・転送量・drop統計を表示します。SIGINT／SIGTERMによる停止にも対応しています。大きな記録では終了時の集計に時間がかかります。
+**Ctrl+Cで停止**します。ファイルを閉じた後、記録件数・転送量・drop統計を表示します。LinuxではSIGINT／SIGTERM、WindowsではCtrl+Breakによる停止にも対応しています。大きな記録では終了時の集計に時間がかかります。
 
 保存先には、開始日（UTC）のフォルダーと一意なファイル名が作られます。
 
@@ -148,4 +165,4 @@ python -m pip install -e '.[test]'
 python -m pytest -q
 ```
 
-WSLの仮想Ethernetで、PCAP／PCAPNG、ファイル分割、E1R同時受信・offline復号を検証しています。実capture試験の結果と制約は[VALIDATION.md](VALIDATION.md)、captureツールの仕様は[dumpcap manual](https://www.wireshark.org/docs/man-pages/dumpcap.html)を参照してください。
+WindowsではNIC情報の取得とプロセス停止、LinuxではWSLの仮想EthernetによるPCAP／PCAPNG・ファイル分割・E1R併用を検証しています。Windowsでの実captureはNpcap導入後の検証項目です。結果の詳細は[VALIDATION.md](VALIDATION.md)、captureツールの仕様は[dumpcap manual](https://www.wireshark.org/docs/man-pages/dumpcap.html)を参照してください。
