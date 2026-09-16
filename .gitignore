@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+build/
+dist/
+logs/
+validation-artifacts/
+*.pcap
+*.pcapng
+*.stderr.log
