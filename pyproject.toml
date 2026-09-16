@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "packet-recorder"
+version = "0.1.0"
+description = "Unfiltered Linux Ethernet recording supervised by Python and captured by dumpcap"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+packet-record = "packet_recorder.record:main"
+packet-interfaces = "packet_recorder.interfaces:main"
+
+[tool.setuptools.packages.find]
+include = ["packet_recorder*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
